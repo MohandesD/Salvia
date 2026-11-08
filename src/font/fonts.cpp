@@ -7,6 +7,8 @@
 Fileio Fonts::fileio;
 TTF_Font* Fonts::vFonts[2];
 int Fonts::s_fontSize = 0;
+int Fonts::s_smallDelta = 9;
+std::string Fonts::s_fontPath;
 SDL_mutex *Fonts::mutex = NULL;
 
 Fonts::Fonts(){
@@ -24,15 +26,20 @@ Fonts::~Fonts(){
 /**
     * 
     */
-void Fonts::destroy(){
+void Fonts::closeFaces(){
     for (unsigned int i=0; i < 2; i++){
         if (vFonts[i] != NULL){
             TTF_CloseFont(vFonts[i]);
             vFonts[i] = NULL;
         }
     }
+}
+
+void Fonts::destroy(){
+	closeFaces();
 	TTF_Quit();
 	fileio.clearFile();
+	s_fontPath.clear();
 	if (mutex) {
 		SDL_DestroyMutex(mutex);
 		mutex = NULL;
@@ -43,9 +50,39 @@ void Fonts::destroy(){
     * 
     */
 void Fonts::initFonts(int fontSize){
+	initFonts(fontSize, std::string(), 9);
+}
+
+void Fonts::initFonts(int fontSize, const std::string& ttfPath, int smallDelta){
+	closeFaces();
 	s_fontSize = fontSize;   // necesario para reabrir copias independientes
-	vFonts[FONTBIG] = NULL;
-	vFonts[FONTSMALL] = NULL;
+	s_smallDelta = smallDelta > 0 ? smallDelta : 9;
+	s_fontPath = ttfPath;
+	int smallSize = fontSize - s_smallDelta;
+	if (smallSize < 8) {
+		smallSize = 8;
+	}
+
+	bool opened = false;
+	if (!ttfPath.empty()) {
+		vFonts[FONTBIG] = TTF_OpenFont(ttfPath.c_str(), fontSize);
+		if (vFonts[FONTBIG] != NULL) {
+			vFonts[FONTSMALL] = TTF_OpenFont(ttfPath.c_str(), smallSize);
+			opened = vFonts[FONTSMALL] != NULL;
+			if (!opened) {
+				LOG_ERROR("Theme font small face failed (%s): %s\n", ttfPath.c_str(), TTF_GetError());
+				closeFaces();
+			}
+		} else {
+			LOG_ERROR("Theme font failed (%s): %s\n", ttfPath.c_str(), TTF_GetError());
+		}
+	}
+
+	if (opened) {
+		return;
+	}
+
+	s_fontPath.clear();
 	fileio.loadFromMem(Arimo_Regular_ttf, Arimo_Regular_ttf_size);
 	SDL_RWops *RWOps = SDL_RWFromMem(fileio.getFile(), (int)fileio.getFileSize());
 	if (RWOps != NULL){
@@ -57,7 +94,7 @@ void Fonts::initFonts(int fontSize){
 
 	SDL_RWops *RWOps2 = SDL_RWFromMem(fileio.getFile(), (int)fileio.getFileSize());
 	if (RWOps2 != NULL){
-		vFonts[FONTSMALL] = TTF_OpenFontRW(RWOps2, 1, fontSize - 9);
+		vFonts[FONTSMALL] = TTF_OpenFontRW(RWOps2, 1, smallSize);
 		if (vFonts[FONTSMALL] == NULL) {
 			LOG_ERROR("Error al cargar fuente pequenya: %s\n", TTF_GetError());
 		} 
@@ -134,10 +171,19 @@ TTF_Font* Fonts::createIndependentFont(int fontId){
 	ScopedFontLock lock(mutex);
 	if (fontId < 0 || fontId > FONTSMALL) 
 		return NULL;
-	if (s_fontSize <= 0 || fileio.getFile() == NULL) 
+	if (s_fontSize <= 0) 
 		return NULL;
 
-	const int sz = (fontId == FONTBIG) ? s_fontSize : (s_fontSize - 9);
+	const int sz = (fontId == FONTBIG) ? s_fontSize : (s_fontSize - s_smallDelta > 8 ? s_fontSize - s_smallDelta : 8);
+	if (!s_fontPath.empty()) {
+		TTF_Font* fromFile = TTF_OpenFont(s_fontPath.c_str(), sz);
+		if (!fromFile) {
+			LOG_ERROR("Fonts::createIndependentFont(%d): %s", fontId, TTF_GetError());
+		}
+		return fromFile;
+	}
+	if (fileio.getFile() == NULL)
+		return NULL;
 	SDL_RWops* rw = SDL_RWFromMem(fileio.getFile(), (int)fileio.getFileSize());
 	if (!rw) return NULL;
 	// 2do arg = 1 -> TTF cierra el RWops al cerrar la fuente

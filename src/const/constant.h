@@ -103,7 +103,14 @@ typedef enum {
 	clAskBg, 	
 	clAskLine, 
 	clAskText, 
-	clHighligtOption, 
+	clHighligtOption,
+	/* Theme chrome. Defaults match the historical list (white / near-black /
+	 * gold bar) so a missing theme file does not change the picture. */
+	clListText,
+	clListTextSelected,
+	clHeader,
+	clFooter,
+	clSelection,
     clTotalColors
 } enumColors;
 
@@ -274,7 +281,7 @@ struct AchievementState{
 
 typedef enum{ TIPODIRECTORIO, TIPOFICHERO} enumFileAttr;
 typedef enum{ COMPAREWHOLEWORD, COMPAREBEGINNING} enumFileCompare;
-typedef enum{ LAYTEXT, LAYSIMPLE, LAYBOXES} enumLayout;
+typedef enum{ LAYTEXT, LAYSIMPLE, LAYBOXES, LAYGRID, LAYCAROUSEL} enumLayout;
 typedef enum{ ALIGN_TOP, ALIGN_MIDDLE} enumAlign;
 typedef enum{ SBTNCLICK, SBTNLOAD } enumSounds;
 
@@ -846,7 +853,7 @@ class Constant{
 			}
 		}
 
-		static void createRectAlphaFilled(SDL_Surface*& selecAlphaRec, SDL_Rect& rectElem, SDL_PixelFormat* format, enumColors color, bool border = false){
+		static void createRectAlphaFilled(SDL_Surface*& selecAlphaRec, SDL_Rect& rectElem, SDL_PixelFormat* format, enumColors color, bool border = false, int alpha = -1){
 			bool drawWithAlfa = true;
 			#if defined(_XBOX)
 				drawWithAlfa = false;
@@ -860,7 +867,7 @@ class Constant{
 															   format->Bmask, 
 															   format->Amask);
 
-				const Uint8 KEY_ALPHA = 180;
+				const Uint8 KEY_ALPHA = (alpha >= 0 && alpha <= 255) ? (Uint8)alpha : (Uint8)180;
 				Uint8 fillColorAlpha = KEY_ALPHA;
 				#if !defined(_XBOX) && !defined(SALVIA_GPU_VIDEO)
 					Uint32 colorkey = SDL_MapRGB(rawSurface->format, 255, 0, 255);

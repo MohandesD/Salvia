@@ -6,6 +6,7 @@
 #include <gfx/SDL_gfxPrimitives.h>
 #include <gfx/gfx_utils.h>
 #include <io/cfgloader.h>
+#include <theme/themeruntime.h>
 #include <ostream>
 #ifdef _XBOX
 	#include <xtl.h> // Cabecera obligatoria del XDK de Xbox
@@ -31,6 +32,17 @@ struct CStrEqual {
         return std::strcmp(a, b) == 0;
     }
 };
+
+SDL_Surface* renderMenuLine(TTF_Font* font, const char* text, SDL_Color color) {
+	if (font == NULL || text == NULL) {
+		return NULL;
+	}
+#ifdef _XBOX
+	return Fonts::renderUtf8Solid(font, text, color);
+#else
+	return Fonts::renderUtf8Blended(font, text, color);
+#endif
+}
 }
 
 SDL_Surface* ListMenu::imgText;
@@ -59,10 +71,9 @@ ListMenu::ListMenu(int screenw, int screenh){
     animateBkg = true;
 	showBottomInfo = true;
     setObjectType(GUILISTBOX);
-    setLayout(LAYSIMPLE, screenw, screenh);
-    //set_trans_blender(255, 255, 255, 190);
 	selecAlphaRec = NULL;
 	navPath = NULL;
+    setLayout(LAYSIMPLE, screenw, screenh);
 }
 
 ListMenu::~ListMenu(){
@@ -84,8 +95,57 @@ std::size_t ListMenu::getNumGames(){
     return filteredGames.size();
 }
 
+int ListMenu::rowStride() const {
+	int extra = Theme_current().item_spacing;
+	if (extra < 0) {
+		extra = 0;
+	}
+	int stride = face_h_big + extra;
+	return stride > 0 ? stride : 1;
+}
+
+int ListMenu::footerReserve() const {
+	const SalviaTheme& theme = Theme_current();
+	if (!showBottomInfo) {
+		return 0;
+	}
+	if (theme.show_footer || !theme.footer_text.empty()) {
+		return face_h_big * 2;
+	}
+	return 0;
+}
+
+int ListMenu::gridColumns() const {
+	int cols = Theme_current().grid_columns;
+	if (cols < 1) {
+		cols = 1;
+	}
+	if (cols > 12) {
+		cols = 12;
+	}
+	return cols;
+}
+
 int ListMenu::getScreenNumLines(){
-    return face_h_big != 0 ? (int)std::floor((double)getH() / face_h_big) : 0;
+	if (this->layout == LAYCAROUSEL) {
+		int n = Theme_current().carousel_visible;
+		if (n < 3) {
+			n = 3;
+		}
+		if ((n % 2) == 0) {
+			++n;
+		}
+		return n;
+	}
+	int stride = rowStride();
+	int rows = stride != 0 ? (int)std::floor((double)getH() / (double)stride) : 0;
+	if (rows < 1) {
+		rows = 1;
+	}
+	if (this->layout == LAYGRID) {
+		return rows * gridColumns();
+	}
+    return rows;
 }
 
 /**
@@ -93,28 +153,97 @@ int ListMenu::getScreenNumLines(){
     */
 void ListMenu::setLayout(int layout, int screenw, int screenh){
     clearSelectedText();
-	this->marginY = face_h_big * 2;
-
-    if (layout == LAYBOXES){
-        this->setX(0);
-        this->setY(marginY);
-        this->setW(screenw / 2);
-        this->setH(screenh - this->getY());
-        this->centerText = false;
-        this->layout = layout;
-
-		if (showBottomInfo){
-			this->setH(this->getH() - face_h_big * 2);
-		}
-	
+	const SalviaTheme& theme = Theme_current();
+	if (theme.margin_x >= 0) {
+		this->marginX = theme.margin_x;
 	} else {
-        this->setX(marginX);
-        this->setY(marginY);
-        this->setW(screenw - marginX);
-        this->setH(screenh - this->getY());
-        this->centerText = true;
-        this->layout = layout;
+		this->marginX = (int)floor((double)screenw / 100.0);
+	}
+	if (theme.margin_y >= 0) {
+		this->marginY = theme.margin_y;
+	} else {
+		this->marginY = face_h_big * (theme.show_header ? 2 : 1);
+	}
+	if (this->marginY < 0) {
+		this->marginY = 0;
+	}
+
+	this->centerText = (theme.align == TH_ALIGN_CENTER);
+	this->layout = layout;
+
+	const int footer = footerReserve();
+	const int top = this->marginY;
+	const bool split = (layout == LAYBOXES && theme.show_artwork);
+
+    if (split){
+        this->setX(0);
+        this->setY(top);
+        this->setW(screenw / 2);
+        this->setH(screenh - top - footer);
+	} else if (layout == LAYGRID || layout == LAYCAROUSEL) {
+		this->setX(0);
+		this->setY(top);
+		this->setW(screenw);
+		this->setH(screenh - top - footer);
+	} else {
+        this->setX(this->marginX);
+        this->setY(top);
+        this->setW(screenw - this->marginX);
+        this->setH(screenh - top - footer);
     }
+	if (this->getH() < face_h_big) {
+		this->setH(face_h_big);
+	}
+	this->maxLines = this->getScreenNumLines();
+	if (this->maxLines < 1) {
+		this->maxLines = 1;
+	}
+	if (this->listSize > 0) {
+		this->moveTo(this->curPos);
+	}
+}
+
+void ListMenu::syncFontMetrics(){
+	face_h_big = Fonts::getLineSkip(Fonts::FONTBIG);
+	face_h_small = Fonts::getLineSkip(Fonts::FONTSMALL);
+	if (face_h_big < 1) {
+		face_h_big = 1;
+	}
+	if (face_h_small < 1) {
+		face_h_small = 1;
+	}
+}
+
+void ListMenu::invalidateThemeSurfaces(){
+	clearSelectedText();
+	if (selecAlphaRec != NULL) {
+		SDL_FreeSurface(selecAlphaRec);
+		selecAlphaRec = NULL;
+	}
+	if (navPath != NULL) {
+		SDL_FreeSurface(navPath);
+		navPath = NULL;
+	}
+	lastTxtNav.clear();
+	for (int i = 0; i < (int)filteredGames.size(); ++i) {
+		if (filteredGames[i] != NULL && filteredGames[i]->cache != NULL) {
+			SDL_FreeSurface(filteredGames[i]->cache);
+			filteredGames[i]->cache = NULL;
+		}
+	}
+}
+
+void ListMenu::step(int delta){
+	if (this->listSize <= 0 || delta == 0) {
+		return;
+	}
+	int n = this->listSize;
+	int next = this->curPos + delta;
+	next %= n;
+	if (next < 0) {
+		next += n;
+	}
+	moveTo(next);
 }
 
 void ListMenu::applyFilter() {
@@ -206,8 +335,17 @@ void ListMenu::sortFilters(){
 }
 
 void ListMenu::draw(SDL_Surface *video_page, bool haveFocus){
+	if (this->layout == LAYGRID) {
+		drawGrid(video_page, haveFocus);
+		return;
+	}
+	if (this->layout == LAYCAROUSEL) {
+		drawCarousel(video_page, haveFocus);
+		return;
+	}
     TTF_Font *fontMenu = Fonts::getFont(Fonts::FONTBIG);
-	const int marginTextIcon = face_h_big;
+	const SalviaTheme& theme = Theme_current();
+	const int marginTextIcon = theme.show_icons ? face_h_big : theme.item_padding;
 	static bool lastHaveFocus = haveFocus;
 
     // Guarda la posicion seleccionada del frame anterior para saber cuando cambio
@@ -225,16 +363,27 @@ void ListMenu::draw(SDL_Surface *video_page, bool haveFocus){
 	//To scroll one letter in one second. We use the face_h because the width of 
     //a letter is not fixed.
     const float pixelsScrollFps = max(ceil(face_h_big / (float)textFps), 1.0f);
-	const SDL_Color colorTextSel = haveFocus ? Constant::colors[clBlack].sdlColor : Constant::colors[clDarkGray].sdlColor;
-	const SDL_Color colorTextNotSel = haveFocus ? Constant::colors[clWhite].sdlColor : Constant::colors[clDarkGray].sdlColor;
+	const SDL_Color colorTextSel = haveFocus ? Constant::colors[clListTextSelected].sdlColor : Constant::colors[clDarkGray].sdlColor;
+	const SDL_Color colorTextNotSel = haveFocus ? Constant::colors[clListText].sdlColor : Constant::colors[clDarkGray].sdlColor;
+
+	int barExtra = 0;
+	if (theme.item_padding > 0 && theme.item_spacing > 0) {
+		barExtra = theme.item_padding;
+		if (barExtra > theme.item_spacing) {
+			barExtra = theme.item_spacing;
+		}
+	}
+	const int barH = face_h_big + barExtra;
+	const int stride = rowStride();
 
 	//Creamos el rectangulo de elemento seleccionado translucido
-	SDL_Rect rectElem = {0, 0, this->getW() - 2 * marginX, face_h_big};
-	if (selecAlphaRec == NULL || selecAlphaRec->w != rectElem.w || selecAlphaRec->h != rectElem.h){
+	SDL_Rect rectElem = {0, 0, this->getW() - 2 * marginX, barH};
+	if (theme.selection == TH_SEL_BAR && (selecAlphaRec == NULL || selecAlphaRec->w != rectElem.w || selecAlphaRec->h != rectElem.h)){
 		if (selecAlphaRec != NULL){
 			SDL_FreeSurface(selecAlphaRec);
+			selecAlphaRec = NULL;
 		}
-		Constant::createRectAlphaFilled(selecAlphaRec, rectElem, video_page->format, clBkgMenu, true);
+		Constant::createRectAlphaFilled(selecAlphaRec, rectElem, video_page->format, clSelection, true, Theme_selectionAlpha(180));
 	}
 
     // Si cambio la seleccion: invalida la cache del elemento anterior y del nuevo
@@ -282,13 +431,15 @@ void ListMenu::draw(SDL_Surface *video_page, bool haveFocus){
     prevEndPos = this->endPos;
 
 	//Dibujamos la ruta relativa que estamos explorando
-	drawNavBar(video_page, colorTextNotSel, fontMenu, face_h_big);
+	if (theme.show_nav_bar) {
+		drawNavBar(video_page, colorTextNotSel, fontMenu, face_h_big);
+	}
 
 	//Dibujamos el texto
     for (int i=this->iniPos; i < this->endPos; i++){
         auto& game = filteredGames.at(i);
         const int screenPos = i - this->iniPos;
-        const int fontHeightRect = screenPos * face_h_big;
+        const int fontHeightRect = screenPos * stride;
         SDL_Rect dstRectIcon = {this->getX() + marginX, this->getY() + fontHeightRect + 2, 0, 0};
         SDL_Rect dstRectWithMargin = {dstRectIcon.x + marginTextIcon, dstRectIcon.y - 2, 0, 0};
 		const string line = game->gameTitle.empty() ? game->longFileName : game->gameTitle;
@@ -299,12 +450,16 @@ void ListMenu::draw(SDL_Surface *video_page, bool haveFocus){
 		srcRect.x = i == this->curPos ? (Sint16)pixelShift : 0;
 
 		//Drawing a faded background selection rectangle
-        if (i == this->curPos){
+        if (i == this->curPos && theme.selection != TH_SEL_NONE){
 			SDL_Rect rectElemBlit = {this->getX() + marginX, this->getY() + fontHeightRect, rectElem.w, rectElem.h};
-			if (haveFocus && selecAlphaRec){
-				SDL_BlitSurface(selecAlphaRec, NULL, video_page, &rectElemBlit);
+			if (theme.selection == TH_SEL_UNDERLINE) {
+				fastline(video_page, rectElemBlit.x, rectElemBlit.y + rectElemBlit.h - 1,
+					rectElemBlit.x + rectElemBlit.w, rectElemBlit.y + rectElemBlit.h - 1,
+					Constant::colors[clSelection].sdlColor);
+			} else if (theme.selection == TH_SEL_OUTLINE || !haveFocus || selecAlphaRec == NULL) {
+				rect(video_page, rectElemBlit.x, rectElemBlit.y, rectElemBlit.x + rectElemBlit.w - 1, rectElemBlit.y + rectElemBlit.h - 1, Constant::colors[clSelection].sdlColor);
 			} else {
-				rect(video_page, rectElemBlit.x, rectElemBlit.y, rectElemBlit.x + rectElemBlit.w - 1, rectElemBlit.y + rectElemBlit.h - 1, Constant::colors[clBkgMenu].sdlColor);
+				SDL_BlitSurface(selecAlphaRec, NULL, video_page, &rectElemBlit);
 			}
         }
 
@@ -323,9 +478,29 @@ void ListMenu::draw(SDL_Surface *video_page, bool haveFocus){
 			//SDL_SetColorKey(game->cache, SDL_SRCCOLORKEY, 0); 
         } 
 
+		if (game->cache != NULL && theme.align != TH_ALIGN_LEFT && pixelShift < 1.0f) {
+			int avail = rectElem.w - marginTextIcon;
+			if (avail < 0) {
+				avail = 0;
+			}
+			if (game->cache->w < avail) {
+				if (theme.align == TH_ALIGN_CENTER) {
+					dstRectWithMargin.x = this->getX() + marginX + marginTextIcon + (avail - game->cache->w) / 2;
+				} else if (theme.align == TH_ALIGN_RIGHT) {
+					dstRectWithMargin.x = this->getX() + marginX + marginTextIcon + avail - game->cache->w;
+				}
+			}
+		}
+		if (game->cache == NULL) {
+			continue;
+		}
 		SDL_BlitSurface(game->cache, &srcRect, video_page, &dstRectWithMargin);
 
-		int txtDifWidth = game->cache->w - (selecAlphaRec->w - marginX - marginTextIcon);
+		int availW = rectElem.w - marginX - marginTextIcon;
+		if (selecAlphaRec != NULL) {
+			availW = selecAlphaRec->w - marginX - marginTextIcon;
+		}
+		int txtDifWidth = game->cache->w - availW;
 		//Comprobando si el tamanyo del texto es mayor que el espacio disponible
 		if (i == this->curPos && txtDifWidth > 0 && SDL_GetTicks() > lastTick + frameTimeText) {
 			// Pausa de 2s al inicio (o al reiniciar el ciclo tras wrappear)
@@ -346,16 +521,160 @@ void ListMenu::draw(SDL_Surface *video_page, bool haveFocus){
 				}
 			}
 		}
-		drawIconListElem(video_page, game, dstRectIcon);
+		if (theme.show_icons) {
+			drawIconListElem(video_page, game, dstRectIcon);
+		}
     }
 
 	//Drawing the scrollbar
-	if (this->listSize > 1 && this->listSize > getScreenNumLines()){
+	if (theme.show_scrollbar && this->listSize > 1 && this->listSize > getScreenNumLines()){
 		const int scrollX = this->getX() + marginX + rectElem.w;
 		const int scrollH = face_h_big;
 		const int scrollY = (int) (this->getY() + ((this->curPos) / (float)(this->listSize - 1)) * ((getScreenNumLines() - 1) * scrollH));
 		SDL_Rect rectElemScrollbar = {scrollX + 2, scrollY, 8, scrollH};
-		rect(video_page, rectElemScrollbar.x, rectElemScrollbar.y, rectElemScrollbar.x + rectElemScrollbar.w - 1, rectElemScrollbar.y + rectElemScrollbar.h - 1, Constant::colors[clBkgMenu].sdlColor);
+		rect(video_page, rectElemScrollbar.x, rectElemScrollbar.y, rectElemScrollbar.x + rectElemScrollbar.w - 1, rectElemScrollbar.y + rectElemScrollbar.h - 1, Constant::colors[clSelection].sdlColor);
+	}
+}
+
+void ListMenu::drawGrid(SDL_Surface *video_page, bool haveFocus) {
+	const SalviaTheme& theme = Theme_current();
+	const int cols = gridColumns();
+	const int stride = rowStride();
+	int cellW = cols > 0 ? this->getW() / cols : this->getW();
+	if (cellW < 1) {
+		cellW = 1;
+	}
+	const SDL_Color colorSel = haveFocus ? Constant::colors[clListTextSelected].sdlColor : Constant::colors[clDarkGray].sdlColor;
+	const SDL_Color colorPlain = haveFocus ? Constant::colors[clListText].sdlColor : Constant::colors[clDarkGray].sdlColor;
+	TTF_Font* fontMenu = Fonts::getFont(Fonts::FONTSMALL);
+	if (fontMenu == NULL) {
+		fontMenu = Fonts::getFont(Fonts::FONTBIG);
+	}
+
+	for (int i = this->iniPos; i < this->endPos; ++i) {
+		if (i < 0 || i >= (int)filteredGames.size()) {
+			break;
+		}
+		GameFile* game = filteredGames[i];
+		const int local = i - this->iniPos;
+		const int col = local % cols;
+		const int row = local / cols;
+		SDL_Rect cell;
+		cell.x = this->getX() + col * cellW + theme.item_padding / 2;
+		cell.y = this->getY() + row * stride;
+		cell.w = cellW - theme.item_padding;
+		cell.h = stride - 2;
+		if (cell.w < 1) {
+			cell.w = 1;
+		}
+		const int selected = (i == this->curPos);
+		if (selected && theme.selection != TH_SEL_NONE) {
+			if (theme.selection == TH_SEL_UNDERLINE) {
+				fastline(video_page, cell.x, cell.y + cell.h - 1, cell.x + cell.w, cell.y + cell.h - 1, Constant::colors[clSelection].sdlColor);
+			} else if (theme.selection == TH_SEL_OUTLINE) {
+				rect(video_page, cell.x, cell.y, cell.x + cell.w - 1, cell.y + cell.h - 1, Constant::colors[clSelection].sdlColor);
+			} else if (haveFocus) {
+				DrawRectAlpha(video_page, cell, Constant::colors[clSelection].sdlColor, (Uint8)Theme_selectionAlpha(180));
+			} else {
+				rect(video_page, cell.x, cell.y, cell.x + cell.w - 1, cell.y + cell.h - 1, Constant::colors[clSelection].sdlColor);
+			}
+		}
+		SDL_Rect iconRect = {cell.x + cell.w / 2, cell.y + 4, 0, 0};
+		if (theme.show_icons) {
+			drawIconListElem(video_page, game, iconRect);
+		}
+		const std::string line = game->gameTitle.empty() ? game->longFileName : game->gameTitle;
+		SDL_Surface* text = renderMenuLine(fontMenu, line.c_str(), selected ? colorSel : colorPlain);
+		if (text != NULL) {
+			SDL_Rect src = {0, 0, text->w, text->h};
+			if (src.w > cell.w) {
+				src.w = cell.w;
+			}
+			SDL_Rect dst;
+			dst.x = cell.x + (cell.w - src.w) / 2;
+			dst.y = cell.y + cell.h - text->h - 2;
+			if (dst.y < cell.y) {
+				dst.y = cell.y;
+			}
+			dst.w = src.w;
+			dst.h = src.h;
+			SDL_BlitSurface(text, &src, video_page, &dst);
+			SDL_FreeSurface(text);
+		}
+	}
+}
+
+void ListMenu::drawCarousel(SDL_Surface *video_page, bool haveFocus) {
+	const SalviaTheme& theme = Theme_current();
+	int n = theme.carousel_visible;
+	if (n < 3) {
+		n = 3;
+	}
+	if ((n % 2) == 0) {
+		++n;
+	}
+	const int mid = n / 2;
+	int slotW = n > 0 ? video_page->w / n : video_page->w;
+	if (slotW < 1) {
+		slotW = 1;
+	}
+	TTF_Font* fontBig = Fonts::getFont(Fonts::FONTBIG);
+	TTF_Font* fontSmall = Fonts::getFont(Fonts::FONTSMALL);
+	const SDL_Color colorSel = haveFocus ? Constant::colors[clListTextSelected].sdlColor : Constant::colors[clDarkGray].sdlColor;
+	const SDL_Color colorPlain = haveFocus ? Constant::colors[clListText].sdlColor : Constant::colors[clDarkGray].sdlColor;
+	const int centerY = this->getY() + this->getH() / 2;
+
+	for (int slot = 0; slot < n; ++slot) {
+		int idx = this->curPos + (slot - mid);
+		if (idx < 0 || idx >= (int)filteredGames.size()) {
+			continue;
+		}
+		GameFile* game = filteredGames[idx];
+		const int selected = (slot == mid);
+		SDL_Rect cell;
+		cell.x = slot * slotW + theme.item_padding / 2;
+		cell.w = slotW - theme.item_padding;
+		cell.h = selected ? face_h_big + theme.item_padding : face_h_small + theme.item_padding / 2;
+		cell.y = centerY - cell.h / 2;
+		if (cell.w < 1) {
+			cell.w = 1;
+		}
+		if (selected && theme.selection != TH_SEL_NONE) {
+			if (theme.selection == TH_SEL_UNDERLINE) {
+				fastline(video_page, cell.x, cell.y + cell.h - 1, cell.x + cell.w, cell.y + cell.h - 1, Constant::colors[clSelection].sdlColor);
+			} else if (theme.selection == TH_SEL_OUTLINE) {
+				rect(video_page, cell.x, cell.y, cell.x + cell.w - 1, cell.y + cell.h - 1, Constant::colors[clSelection].sdlColor);
+			} else if (haveFocus) {
+				DrawRectAlpha(video_page, cell, Constant::colors[clSelection].sdlColor, (Uint8)Theme_selectionAlpha(210));
+			}
+		}
+		TTF_Font* font = selected ? fontBig : fontSmall;
+		const std::string line = game->gameTitle.empty() ? game->longFileName : game->gameTitle;
+		SDL_Surface* text = renderMenuLine(font, line.c_str(), selected ? colorSel : colorPlain);
+		if (text == NULL) {
+			continue;
+		}
+		SDL_Rect src = {0, 0, text->w, text->h};
+		if (src.w > cell.w) {
+			if (selected && text->w > cell.w) {
+				src.x = (Sint16)pixelShift;
+				if (src.x > text->w - cell.w) {
+					src.x = text->w - cell.w;
+				}
+			}
+			src.w = cell.w;
+		}
+		SDL_Rect dst;
+		dst.x = cell.x + (cell.w - src.w) / 2;
+		dst.y = cell.y + (cell.h - text->h) / 2;
+		dst.w = src.w;
+		dst.h = src.h;
+		SDL_BlitSurface(text, &src, video_page, &dst);
+		SDL_FreeSurface(text);
+		if (selected && theme.show_icons) {
+			SDL_Rect iconRect = {cell.x, cell.y - face_h_big, 0, 0};
+			drawIconListElem(video_page, game, iconRect);
+		}
 	}
 }
 
@@ -904,6 +1223,41 @@ void ListMenu::moveTo(int newPos){
 
     this->curPos = newPos;
 
+	if (this->layout == LAYGRID) {
+		int cols = gridColumns();
+		int rows = this->maxLines / cols;
+		if (rows < 1) {
+			rows = 1;
+		}
+		int row = this->curPos / cols;
+		int firstRow = this->iniPos / cols;
+		if (row < firstRow) {
+			firstRow = row;
+		} else if (row >= firstRow + rows) {
+			firstRow = row - rows + 1;
+		}
+		int maxFirst = ((this->listSize - 1) / cols) - rows + 1;
+		if (maxFirst < 0) {
+			maxFirst = 0;
+		}
+		if (firstRow > maxFirst) {
+			firstRow = maxFirst;
+		}
+		if (firstRow < 0) {
+			firstRow = 0;
+		}
+		this->iniPos = firstRow * cols;
+		this->endPos = this->iniPos + rows * cols;
+		if (this->endPos > this->listSize) {
+			this->endPos = this->listSize;
+		}
+		if (this->curPos != oldPos) {
+			this->pixelShift = 0;
+			this->lastSel = -1;
+		}
+		return;
+	}
+
     window = this->listSize < this->maxLines ? this->listSize : this->maxLines;
     /* maxLines vale 0 hasta la primera resetIndexPos(); con listSize ya
      * poblado eso dejaria la ventana a 0 y descuadraria iniPos. */
@@ -991,8 +1345,9 @@ void ListMenu::resizeMarginTop(int addedMargin, int screenH){
 	//Cambiamos el tamanyo del listado para poder mostrar la ruta relativa de directorios
 	this->setY(this->marginY + addedMargin);
 	this->setH(screenH - this->getY());
-	if (showBottomInfo){
-		this->setH(this->getH() - face_h_big * 2);
+	const int footer = footerReserve();
+	if (footer > 0){
+		this->setH(this->getH() - footer);
 	}
 	this->maxLines = this->getScreenNumLines();
 	this->endPos = (int)this->filteredGames.size() > this->maxLines ? this->iniPos + this->maxLines : this->filteredGames.size();

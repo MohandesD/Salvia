@@ -31,6 +31,11 @@ class ListMenu : public Object{
 		SDL_Surface *selecAlphaRec;
 		void drawIconListElem(SDL_Surface *video_page, GameFile *game, SDL_Rect& dstRectIcon);
 		void drawNavBar(SDL_Surface *video_page, const SDL_Color& txtColor, TTF_Font *fontMenu, const int& face_h);
+		void drawGrid(SDL_Surface *video_page, bool haveFocus);
+		void drawCarousel(SDL_Surface *video_page, bool haveFocus);
+		int rowStride() const;
+		int footerReserve() const;
+		int gridColumns() const;
 		std::string lastTxtNav;
 		SDL_Surface *navPath;
 		int face_h_big;
@@ -76,6 +81,11 @@ class ListMenu : public Object{
         int getScreenNumLines();
         void setLayout(int layout, int screenw, int screenh);
         void draw(SDL_Surface *video_page, bool haveFocus = true);
+		/* Drops text and highlight caches after a theme change. */
+		void invalidateThemeSurfaces();
+		void syncFontMetrics();
+		/* Wraps around the list. Used by grid and carousel navigation. */
+		void step(int delta);
         void mapFileToList(string filepath);
         static bool compareUniquePtrs(const std::unique_ptr<GameFile>& a,
                                 const std::unique_ptr<GameFile>& b);

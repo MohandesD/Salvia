@@ -1,4 +1,5 @@
 #include "cfgloader.h"
+#include <theme/theme.h>
 #include <utils/langmanager.h>
 #include <const/constant.h>
 #include <const/cfgconst.h>
@@ -26,6 +27,7 @@ CfgLoader::CfgLoader(){
 	emuCfgPos = 0;
 	idxRegion = 0;
 	idxIdioma = 0;
+	themeIndex = 0;
 	initMainConfig();
 	loadMainConfig();
 	loadCoreParams();
@@ -254,8 +256,12 @@ void CfgLoader::initMainConfig(){
 
 	configMain[cfg::lightgunThickness] = cfg::t_cfg_props("lightgunThickness", (int)1);
 	configMain[cfg::lightgunThickness].desc = "#Set the thickness of the lightgun crosshair";
-	
-	
+
+	configMain[cfg::theme] = cfg::t_cfg_props("theme", std::string("default"));
+	configMain[cfg::theme].desc = "#Frontend theme folder under assets\\themes (see THEMES.md)."
+		"\n#default keeps the built-in Salvia look."
+		"\n#emulationstation is the included system-list example."
+		"\n#Colors, layout and fonts are read from that folder's theme.cfg; no rebuild is required.";
 
 	struct retro_system_info info;
 	memset(&info, 0, sizeof(info));
@@ -343,6 +349,48 @@ void CfgLoader::loadMainConfig(){
 	emulators.push_back(std::move(salviaConfig));
 
 	resolveShaderModes();
+	scanThemes();
+}
+
+/* Folders under assets/themes that contain theme.cfg. "default" is always
+ * first so an empty or missing theme key stays on the built-in look. */
+void CfgLoader::scanThemes(){
+	themeIds.clear();
+	themeIds.push_back("default");
+
+	dirutil listing;
+	const std::string sep = Constant::getFileSep();
+	const std::string root = Constant::getAppDir() + sep + "assets" + sep + "themes";
+	std::vector<std::unique_ptr<FileProps> > entries;
+	listing.listFiles(root.c_str(), entries, "", "", true, true, true);
+
+	for (std::size_t i = 0; i < entries.size(); ++i) {
+		FileProps* prop = entries[i].get();
+		if (prop == NULL) {
+			continue;
+		}
+		const std::string id = prop->filename;
+		if (!theme_id_valid(id) || id == "default") {
+			continue;
+		}
+		const std::string cfg = root + sep + id + sep + "theme.cfg";
+		if (dirutil::fileExists(cfg.c_str())) {
+			themeIds.push_back(id);
+		}
+	}
+
+	themeIndex = 0;
+	const std::string wanted = configMain[cfg::theme].valueStr;
+	for (std::size_t i = 0; i < themeIds.size(); ++i) {
+		if (themeIds[i] == wanted) {
+			themeIndex = (int)i;
+			return;
+		}
+	}
+	if (theme_id_valid(wanted) && wanted != "default") {
+		themeIds.push_back(wanted);
+		themeIndex = (int)themeIds.size() - 1;
+	}
 }
 
 /* Traduce el nombre de preset guardado en la configuracion al indice vivo que
@@ -760,6 +808,10 @@ std::string CfgLoader::saveMainParams(){
 	 * del preset, porque la lista de assets\shaders es dinamica. */
 	configMain[cfg::shaderMode].setPropValue(
 		ShaderRegistry::instance()->idAt(configMain[cfg::shaderMode].valueInt));
+
+	if (themeIndex >= 0 && themeIndex < (int)themeIds.size()) {
+		configMain[cfg::theme].setPropValue(themeIds[themeIndex]);
+	}
 
 	for (int i=0; i < cfg::MAIN_CFG_MAX; i++){
 		if (configMain[i].name.empty()) continue;

@@ -3,6 +3,7 @@
 #include <sstream>
 
 #include <menus/gestormenus.h>
+#include <theme/themeruntime.h>
 #include <audio/musicplayer.h>   /* g_music: volumen de la musica en caliente */
 #include <audio/midisynth.h>     /* applyMidiSoundfont: sintetizador MIDI desde el menu */
 #include <const/constant.h>
@@ -467,6 +468,11 @@ void GestorMenus::poblarMenuVideo(Menu* menuVideo, CfgLoader *refConfig){
 
 	OpcionLista *listaBkg = new OpcionLista(LanguageManager::instance()->get("menu.background.anim.title"), bgMenu, &refConfig->configMain[cfg::animBG].getIntRef());
 	listaBkg->callback = &GestorMenus::selectBackground;
+
+	refConfig->scanThemes();
+	OpcionLista *listaTheme = new OpcionLista(trOrDefault("menu.theme.title", "Theme"), refConfig->themeIds, &refConfig->themeIndex);
+	listaTheme->callback = &GestorMenus::selectTheme;
+	menuVideo->opciones.push_back(listaTheme);
 	menuVideo->opciones.push_back(listaBkg);	
 
 	#ifndef _XBOX
@@ -1022,6 +1028,22 @@ void GestorMenus::loadAchievements() {
     resetIndexPos();
 }
 
+std::string GestorMenus::selectTheme(void* inst, void *index, void *values) {
+	(void)inst;
+	(void)values;
+	if (index == NULL) {
+		return "";
+	}
+	const int idx = *static_cast<int*>(index);
+	extern CfgLoader* cfgLoader;
+	CfgLoader* cfg = cfgLoader;
+	if (cfg != NULL && idx >= 0 && idx < (int)cfg->themeIds.size()) {
+		cfg->configMain[cfg::theme].setPropValue(cfg->themeIds[idx]);
+		Theme_applyLive(cfg->themeIds[idx]);
+	}
+	return "";
+}
+
 std::string GestorMenus::selectBackground(void* inst, void *index, void *values) {
 	//Cambio en vivo del fondo del menu (sin salir del menu). El estado retenido
 	//se decide en setEmuStatus/arranque; aqui reflejamos el nuevo animBG.
@@ -1029,6 +1051,8 @@ std::string GestorMenus::selectBackground(void* inst, void *index, void *values)
 	//(tiles/imagen/none) apaga el fondo GPU.
 	if (!index) return "";
 	const int idx = *static_cast<int*>(index);
+	Theme_noteUserBackground();
+	Theme_refreshBackground();
 	HLSLBackground_setActive((idx >= BG_HLSL && idx < BG_NONE) ? (idx - BG_HLSL + 1) : 0);
 	return "";
 }
@@ -2290,8 +2314,8 @@ void GestorMenus::draw(SDL_Surface *video_page){
 	}
 
 	Fonts::drawTextCentTransparent(video_page, fontMenu, this->menuActual->titulo.c_str(), 0, face_h < marginY ? (marginY - face_h) / 2 : 0 , 
-				true, false, Constant::colors[clWhite].sdlColor, 0);
-	fastline(video_page, marginX, marginY - 1, video_page->w - marginX, marginY - 1, Constant::colors[clWhite].sdlColor);
+				true, false, Constant::colors[clHeader].sdlColor, 0);
+	fastline(video_page, marginX, marginY - 1, video_page->w - marginX, marginY - 1, Constant::colors[clHeader].sdlColor);
 
     //To scroll one letter in one second. We use the face_h because the width of 
     //a letter is not fixed.
@@ -2362,20 +2386,28 @@ void GestorMenus::draw(SDL_Surface *video_page){
 		const int screenPos = listPos - this->iniPos;
         const int fontHeightRect = screenPos * face_h;
         const int lineBackground = -1;
-        SDL_Color lineTextColor = listPos == this->curPos ? Constant::colors[clBlack].sdlColor : Constant::colors[clWhite].sdlColor;
-		valueColor = listPos == this->curPos ? Constant::colors[clBlack].sdlColor : valueColor;
+        SDL_Color lineTextColor = listPos == this->curPos ? Constant::colors[clListTextSelected].sdlColor : Constant::colors[clListText].sdlColor;
+		valueColor = listPos == this->curPos ? Constant::colors[clListTextSelected].sdlColor : valueColor;
 
         //Drawing a faded background selection rectangle
         if (listPos == this->curPos){
             int y = this->getY() + fontHeightRect;
             //Gaining some extra fps when the screen resolution is low
 			SDL_Rect rectElem = {this->getX(), y, this->getW() - marginX, face_h};
-            if (video_page->h >= 480){
-				DrawRectAlpha(video_page, rectElem, Constant::colors[clBkgMenu].sdlColor, 190);
-            } else {
-                lineTextColor = Constant::colors[clWhite].sdlColor;
-            }
-			rect(video_page, rectElem.x - 1, rectElem.y - 1, rectElem.x + rectElem.w, rectElem.y + rectElem.h, Constant::colors[clBkgMenu].sdlColor);
+			const SalviaTheme& theme = Theme_current();
+			if (theme.selection == TH_SEL_NONE) {
+				/* text color alone marks the row */
+			} else if (theme.selection == TH_SEL_UNDERLINE) {
+				fastline(video_page, rectElem.x, rectElem.y + rectElem.h - 1, rectElem.x + rectElem.w, rectElem.y + rectElem.h - 1, Constant::colors[clSelection].sdlColor);
+			} else if (theme.selection == TH_SEL_OUTLINE || video_page->h < 480) {
+				if (video_page->h < 480) {
+					lineTextColor = Constant::colors[clListText].sdlColor;
+				}
+				rect(video_page, rectElem.x, rectElem.y, rectElem.x + rectElem.w - 1, rectElem.y + rectElem.h - 1, Constant::colors[clSelection].sdlColor);
+			} else {
+				DrawRectAlpha(video_page, rectElem, Constant::colors[clSelection].sdlColor, (Uint8)Theme_selectionAlpha(190));
+				rect(video_page, rectElem.x - 1, rectElem.y - 1, rectElem.x + rectElem.w, rectElem.y + rectElem.h, Constant::colors[clSelection].sdlColor);
+			}
         }
         
 		int marginIco = 0;
@@ -2443,7 +2475,7 @@ void GestorMenus::drawKeys(int i, OpcionKey *opt, SDL_Surface *video_page){
 	std::string str = "";
 	const int screenPos = i - this->iniPos;
 	const int fontHeightRect = screenPos * face_h_big;
-	const SDL_Color& lineTextColor = i == this->curPos ? Constant::colors[clBlack].sdlColor : Constant::colors[clWhite].sdlColor;
+	const SDL_Color& lineTextColor = i == this->curPos ? Constant::colors[clListTextSelected].sdlColor : Constant::colors[clListText].sdlColor;
 
 	std::string titulo = this->menuActual->titulo;
 	Constant::lowerCase(&titulo);
@@ -2658,20 +2690,22 @@ void GestorMenus::drawSelectionBox(int i, SDL_Surface *video_page, SDL_Color& li
 
 	const int screenPos = i - this->iniPos;
     const int fontHeightRect = screenPos * face_h;
-	lineTextColor = i == this->curPos ? Constant::colors[clBlack].sdlColor : Constant::colors[clWhite].sdlColor;
+	lineTextColor = i == this->curPos ? Constant::colors[clListTextSelected].sdlColor : Constant::colors[clListText].sdlColor;
 
 	std::string rutaSelected;
 	if (i == this->curPos){
         int y = this->getY() + fontHeightRect;
         //Gaining some extra fps when the screen resolution is low
 		SDL_Rect rectElem = {this->getX(), y, menuActual->menuWidth, face_h};
-        if (video_page->h >= 480){
-			DrawRectAlpha(video_page, rectElem, Constant::colors[clBkgMenu].sdlColor, 190);
-        } else {
-            lineTextColor = Constant::colors[clWhite].sdlColor;
+		const SalviaTheme& theme = Theme_current();
+        if (theme.selection == TH_SEL_BAR && video_page->h >= 480){
+			DrawRectAlpha(video_page, rectElem, Constant::colors[clSelection].sdlColor, (Uint8)Theme_selectionAlpha(190));
+        } else if (video_page->h < 480) {
+            lineTextColor = Constant::colors[clListText].sdlColor;
         }
-		//Drawing the selection menu
-		rect(video_page, rectElem.x - 1, rectElem.y - 1, rectElem.x + rectElem.w, rectElem.y + rectElem.h, Constant::colors[clBkgMenu].sdlColor);
+		if (theme.selection != TH_SEL_NONE) {
+			rect(video_page, rectElem.x - 1, rectElem.y - 1, rectElem.x + rectElem.w, rectElem.y + rectElem.h, Constant::colors[clSelection].sdlColor);
+		}
     } 
 }
 
@@ -2683,7 +2717,7 @@ void GestorMenus::drawFaqSearch(int i, OpcionGameFaq *opcion, SDL_Surface *video
 	const int screenPos = i - this->iniPos;
 	const int face_h = this->menuActual->rowHeight;
 	const int fontHeightRect = screenPos * face_h;
-	SDL_Color lineTextColor = i == this->curPos ? Constant::colors[clBlack].sdlColor : Constant::colors[clWhite].sdlColor;
+	SDL_Color lineTextColor = i == this->curPos ? Constant::colors[clListTextSelected].sdlColor : Constant::colors[clListText].sdlColor;
 	
 	drawSelectionBox(i, video_page, lineTextColor, face_h);
 
@@ -2707,7 +2741,7 @@ void GestorMenus::drawFaqSelect(int i, OpcionFaq *opcion, SDL_Surface *video_pag
 	const int screenPos = i - this->iniPos;
 	const int face_h = this->menuActual->rowHeight;
 	const int fontHeightRect = screenPos * face_h;
-	SDL_Color lineTextColor = i == this->curPos ? Constant::colors[clBlack].sdlColor : Constant::colors[clWhite].sdlColor;
+	SDL_Color lineTextColor = i == this->curPos ? Constant::colors[clListTextSelected].sdlColor : Constant::colors[clListText].sdlColor;
 	
 	drawSelectionBox(i, video_page, lineTextColor, face_h);
 
@@ -2741,7 +2775,7 @@ void GestorMenus::drawImage(int i, OpcionImage *opcion, SDL_Surface *video_page)
 *
 */
 void GestorMenus::drawAchievement(int i, OpcionAchievement *opcion, SDL_Surface *video_page){
-	SDL_Color lineTextColor = i == this->curPos ? Constant::colors[clBlack].sdlColor : Constant::colors[clWhite].sdlColor;
+	SDL_Color lineTextColor = i == this->curPos ? Constant::colors[clListTextSelected].sdlColor : Constant::colors[clListText].sdlColor;
 	drawSelectionBox(i, video_page, lineTextColor);
 
 	TTF_Font *fontMenu = Fonts::getFont(Fonts::FONTBIG);
@@ -2804,7 +2838,7 @@ void GestorMenus::drawSavestateWithImage(int i, OpcionSavestate *opcion, SDL_Sur
     const int screenPos = i - this->iniPos;
     const int fontHeightRect = screenPos * face_h_big;
     const int lineBackground = -1;
-    SDL_Color lineTextColor = i == this->curPos ? Constant::colors[clBlack].sdlColor : Constant::colors[clWhite].sdlColor;
+    SDL_Color lineTextColor = i == this->curPos ? Constant::colors[clListTextSelected].sdlColor : Constant::colors[clListText].sdlColor;
 	const std::string line = opcion->titulo;
 	std::string rutaSelected;
 
@@ -3142,6 +3176,35 @@ std::string GestorMenus::stopScrapping(CONFIG_STATUS *st){
 	return std::string("");
 }
 
+
+void GestorMenus::syncFontMetrics(){
+	face_h_big = Fonts::getLineSkip(Fonts::FONTBIG);
+	face_h_small = Fonts::getLineSkip(Fonts::FONTSMALL);
+	if (face_h_big < 1) {
+		face_h_big = 1;
+	}
+	if (face_h_small < 1) {
+		face_h_small = 1;
+	}
+	for (std::size_t i = 0; i < todosLosMenus.size(); ++i) {
+		if (todosLosMenus[i] != NULL) {
+			todosLosMenus[i]->rowHeight = face_h_big;
+		}
+	}
+	for (std::size_t i = 0; i < coreOptionSubmenus.size(); ++i) {
+		if (coreOptionSubmenus[i] != NULL) {
+			coreOptionSubmenus[i]->rowHeight = face_h_big;
+		}
+	}
+	if (tmpTextOption != NULL) {
+		SDL_FreeSurface(tmpTextOption);
+		tmpTextOption = NULL;
+	}
+	if (this->getW() > 0 && this->getH() > 0) {
+		setLayout(this->layout, this->getW() + this->marginX, this->getH() + this->marginY);
+		this->maxLines = getScreenNumLines();
+	}
+}
 
 void GestorMenus::setLayout(int layout, int screenw, int screenh){
 	this->marginY = face_h_big * 2;

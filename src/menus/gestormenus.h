@@ -559,6 +559,7 @@ public:
     Menu* obtenerMenuActual();
 	void setAchievementsAsSelected(){menuActual = menuAchievements;}
 	void draw(SDL_Surface *video_page);
+	void syncFontMetrics();
 	void updateButton(const SDL_Event &event, TipoKey);
 	void updateAxis(const SDL_Event &event);
 	bool options_changed_flag;
@@ -654,6 +655,7 @@ public:
 	static std::string gameGuidesSearchAction(void* inst, void *value);
 	static std::string gameGuideAction(void* inst, void *value);
 	static std::string selectBackground(void* inst, void *index, void *values);
+	static std::string selectTheme(void* inst, void *index, void *values);
 	static std::string selectMusicVolume(void* inst, void *index, void *values);
 	static std::string toggleMusicEnabled(void* inst, void *value);
 	static std::string toggleMidiEnabled(void* inst, void *value);

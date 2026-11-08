@@ -3,6 +3,7 @@
 #include <SDL.h>
 #include <SDL_joystick.h>
 #include <io/keyboard.h>
+#include <theme/themeruntime.h>
 #include <video/HLSLBackground.h>
 
 #ifdef WIN
@@ -247,18 +248,40 @@ void restoreHistory(ListMenu &listMenu){
 }
 
 int procesarAccionesMenu(ListMenu &listMenu){
-	//Avanzamos uno a uno por el menu
-	if (gameMenu->joystick->inputs.getAnyTap(0, JOY_BUTTON_UP)){
-		listMenu.prevPos();
-	} else if (gameMenu->joystick->inputs.getAnyTap(0, JOY_BUTTON_DOWN)){
-		listMenu.nextPos();
-	} 
-			
-	//Avanzamos pagina a pagina por el menu
-	if (gameMenu->joystick->inputs.getAnyTap(0, JOY_BUTTON_LEFT)){
-		listMenu.prevPage();
-	} else if (gameMenu->joystick->inputs.getAnyTap(0, JOY_BUTTON_RIGHT)){
-		listMenu.nextPage();
+	/* Grid and carousel read the d-pad like a system picker: left/right move
+	 * one entry. The historical list keeps up/down as a step and left/right
+	 * as a page. */
+	if (listMenu.layout == LAYGRID) {
+		const int cols = Theme_current().grid_columns > 0 ? Theme_current().grid_columns : 4;
+		if (gameMenu->joystick->inputs.getAnyTap(0, JOY_BUTTON_UP)) {
+			listMenu.step(-cols);
+		} else if (gameMenu->joystick->inputs.getAnyTap(0, JOY_BUTTON_DOWN)) {
+			listMenu.step(cols);
+		}
+		if (gameMenu->joystick->inputs.getAnyTap(0, JOY_BUTTON_LEFT)) {
+			listMenu.prevPos();
+		} else if (gameMenu->joystick->inputs.getAnyTap(0, JOY_BUTTON_RIGHT)) {
+			listMenu.nextPos();
+		}
+	} else if (listMenu.layout == LAYCAROUSEL) {
+		if (gameMenu->joystick->inputs.getAnyTap(0, JOY_BUTTON_LEFT) ||
+			gameMenu->joystick->inputs.getAnyTap(0, JOY_BUTTON_UP)) {
+			listMenu.prevPos();
+		} else if (gameMenu->joystick->inputs.getAnyTap(0, JOY_BUTTON_RIGHT) ||
+			gameMenu->joystick->inputs.getAnyTap(0, JOY_BUTTON_DOWN)) {
+			listMenu.nextPos();
+		}
+	} else {
+		if (gameMenu->joystick->inputs.getAnyTap(0, JOY_BUTTON_UP)){
+			listMenu.prevPos();
+		} else if (gameMenu->joystick->inputs.getAnyTap(0, JOY_BUTTON_DOWN)){
+			listMenu.nextPos();
+		}
+		if (gameMenu->joystick->inputs.getAnyTap(0, JOY_BUTTON_LEFT)){
+			listMenu.prevPage();
+		} else if (gameMenu->joystick->inputs.getAnyTap(0, JOY_BUTTON_RIGHT)){
+			listMenu.nextPage();
+		}
 	} 
 	
 	//Navegamos a la siguiente letra
@@ -283,7 +306,7 @@ int procesarAccionesMenu(ListMenu &listMenu){
 			//Reseteamos el tamanyo de la lista para no mostrar la ruta relativa
 			//en el caso de que estuviesemos mostrando el contenido de un directorio
 			//o un fichero comprimido
-			listMenu.setLayout(LAYBOXES, gameMenu->overlay->w, gameMenu->overlay->h);
+			listMenu.setLayout(Theme_toLayout(Theme_current()), gameMenu->overlay->w, gameMenu->overlay->h);
 		}
 		restoreHistory(listMenu);
 	}
@@ -564,7 +587,7 @@ void updateMenuScreen(TileMap &tileMap, GameMenu*& gameMenu, ListMenu &listMenu)
 	cfg::t_cfg_props* cfg = gameMenu->getCfgLoader()->configMain;
 	ConfigEmu *emu = gameMenu->getCfgLoader()->getCfgEmu();
 
-	ANIM_BACKGROUNDS bgType = static_cast<ANIM_BACKGROUNDS>(gameMenu->getCfgLoader()->configMain[cfg::animBG].valueInt);
+	ANIM_BACKGROUNDS bgType = static_cast<ANIM_BACKGROUNDS>(Theme_effectiveBackground(gameMenu->getCfgLoader()->configMain[cfg::animBG].valueInt));
 
 	if (processInputs(gameMenu, listMenu, emu->generalConfig) == 1 && gameMenu->getEmuStatus() != EMU_STARTED){
 		//Draw the background

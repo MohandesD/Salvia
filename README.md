@@ -29,6 +29,7 @@ I had grown weary of juggling a multitude of different emulators, each requiring
 * Ingame **Hotkeys**
 * **Rapid-fire**
 * **Animated** or static frontend **backgrounds**
+* **Themes**: colors, fonts, list / grid / carousel layout, header and footer (`THEMES.md`)
 * Game **library search filters** (for FBNeo, FBANext and Mame 2003 plus)
 * **Per-core** libretro configuration
 * **Background music** for each system
@@ -495,6 +496,14 @@ The libretro cheat database offers each game in several *device* variants — `(
 - **Doom** (prboom) and **Quake** (tyrquake) accept their engine's own cheats, not RAM codes. These aren't in the online database, so you make the `.cht` yourself with the classic strings in the `code` field — Doom cheat codes (`iddqd`, `idkfa`, `idclip`, `idbeholdv`…) or Quake console commands (`god`, `noclip`, `impulse 9`…). Note: Doom cheats can't be switched back off once applied.
 - **arcade (FBNeo / MAME)** have their own cheats engine
 - Whatever the device name, the code inside must match the format the core expects — the variants listed in the table above are the ones known to work on each system.
+
+## Themes
+
+The frontend can be restyled without recompiling. Put a folder under `assets/themes/<name>/` with a `theme.cfg`, then set `theme=<name>` in `salvia.cfg` or pick it in **Options > Video > Theme**.
+
+`theme=default` keeps the current Salvia look. `theme=emulationstation` is a clean centered system list (dark background, blue selection bar, no artwork column) for people who like that EmulationStation screen and would rather skin Salvia than run a second frontend. Backgrounds can stay animated, switch to a static image, or use each system's existing `background.jpg`. Per-system menu music is unchanged.
+
+Keys, paths, and the parts that stay hardcoded are in [THEMES.md](THEMES.md).
 
 ## Background music
 To add your own music while navigating through the menus, you can copy your mp3 files into the directory Usb0:\Salvia\assets\music

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "salvia.h"
+#include <theme/themeruntime.h>
 #include <video/shaderpreset.h>
 #include <http/httputil.h>
 #include <http/scrapper.h>
@@ -2444,6 +2445,9 @@ int main(int argc, char *argv[]) {
 	ShaderRegistry::instance()->load();
 
 	cfgLoader = new CfgLoader();
+	Theme_boot(Constant::getAppDir(), cfgLoader->configMain[cfg::theme].valueStr);
+	Theme_applyBackground(cfgLoader);
+	Theme_applyColors();
 
 	if (cfgLoader->isDebug()){
 		#ifndef DEBUG_LOG
@@ -2492,9 +2496,12 @@ int main(int argc, char *argv[]) {
 	 * para una sesion que a lo mejor solo toca la Master System. */
 
 	listMenu = new ListMenu(gameMenu->overlay->w, gameMenu->overlay->h);
-	listMenu->setLayout(LAYBOXES, gameMenu->overlay->w, gameMenu->overlay->h);
+	Theme_bind(gameMenu, listMenu);
+	listMenu->setLayout(Theme_toLayout(Theme_current()), gameMenu->overlay->w, gameMenu->overlay->h);
     tileMap.load(Constant::getAppDir() + Constant::getFileSep() + "assets" + Constant::getFileSep() + "art" + Constant::getFileSep() + "bricks2.png");
 	initializeMenus(*listMenu, *gameMenu, *cfgLoader);
+	/* The saved cursor may remember an old layout. The selected theme wins. */
+	listMenu->setLayout(Theme_toLayout(Theme_current()), gameMenu->overlay->w, gameMenu->overlay->h);
 	
 	//Callback de environment
 	retro_set_environment(retro_environment);

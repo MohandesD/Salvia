@@ -23,6 +23,7 @@
 #include <io/video_common.h>
 #include <io/dirutil.h>
 #include <io/cfgloader.h>
+#include <theme/themeruntime.h>
 #include <io/filepackage.h>
 #include "menuassetloader.h"
 
@@ -155,7 +156,7 @@ class GameMenu : public Engine{
 		void applyMenuBackground(){
 			CfgLoader* cl = getCfgLoader();
 			if (!cl) return;
-			const int animBG = cl->configMain[cfg::animBG].valueInt;
+			const int animBG = Theme_effectiveBackground(cl->configMain[cfg::animBG].valueInt);
 			const bool isMenu = (status == EMU_MENU || status == EMU_MENU_FILTER || status == EMU_MENU_IMAGE_VIEWER);
 			HLSLBackground_setActive((isMenu && animBG >= BG_HLSL && animBG < BG_NONE) ? (animBG - BG_HLSL + 1) : 0);
 		}
@@ -193,6 +194,7 @@ class GameMenu : public Engine{
 		struct retro_system_av_info getAvInfo();
 		void checkDisplayOptions();
 		void loadBgImageAndTitleEmu();
+		void syncFontMetrics();
     private:
 		std::vector<Message> messages;
 		th_messages messagesAchievement;
@@ -257,6 +259,7 @@ class GameMenu : public Engine{
 		void drawKeyboard(TTF_Font* font, t_keyboard& keyb);
 		void drawFilters(ListMenu &listMenu);
 		void drawInfoButtons(SDL_Rect &rect);
+		void drawListFooter(ListMenu &listMenu);
 		void drawTitle(ListMenu &listMenu, TTF_Font *fontBig);
 		void drawStatusBar(ListMenu &listMenu);
 		void drawSelectedGameAssets(ListMenu &listMenu, GameFile *game);
