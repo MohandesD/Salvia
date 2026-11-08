@@ -176,6 +176,12 @@
     <ClCompile Include="src\const\constant.cpp">
       <Filter>Source Files\frontend</Filter>
     </ClCompile>
+    <ClCompile Include="src\theme\theme.cpp">
+      <Filter>Source Files\frontend</Filter>
+    </ClCompile>
+    <ClCompile Include="src\theme\themeruntime.cpp">
+      <Filter>Source Files\frontend</Filter>
+    </ClCompile>
     <ClCompile Include="src\menus\gamemenu.cpp">
       <Filter>Source Files\frontend\menus</Filter>
     </ClCompile>
@@ -203,6 +209,12 @@
   </ItemGroup>
   <ItemGroup>
     <ClInclude Include="src\const\constant.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\theme\theme.h">
+      <Filter>Header Files</Filter>
+    </ClInclude>
+    <ClInclude Include="src\theme\themeruntime.h">
       <Filter>Header Files</Filter>
     </ClInclude>
     <ClInclude Include="src\io\fileio.h">

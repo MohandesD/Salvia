@@ -35,6 +35,11 @@ public:
 	// per-category submenus in the core options menu.
 	std::vector<std::pair<std::string, std::string> > libretroCategories;
 	std::vector<std::string> musicFiles;
+	/* Theme ids found under assets/themes, "default" first. themeIndex is the
+	 * menu cursor; the persisted value is configMain[cfg::theme]. */
+	std::vector<std::string> themeIds;
+	int themeIndex;
+	void scanThemes();
 	/* SoundFonts (.sf2) encontrados en el directorio 'system'.  El primer
 	 * elemento es siempre "ninguno".  Runtime, no se persiste: lo que se guarda
 	 * es el indice elegido (cfg::midiSoundfont). */

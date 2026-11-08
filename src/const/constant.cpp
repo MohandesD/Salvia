@@ -26,7 +26,12 @@ svColor Constant::colors[clTotalColors] = {
 	{{69,69,69}	 , 255},		//clAskBg 	
 	{{91,91,91}	 , 255},		//clAskLine 
 	{{190,190,190}, 255},		//clAskText 
-	{{0,255,197}, 255}		    //clHighligtOption
+	{{0,255,197}, 255},		    //clHighligtOption
+	{{0xFF, 0xFF, 0xFF}, 0},	//clListText
+	{{1, 1, 1}, 0},				//clListTextSelected (same near-black as clBlack)
+	{{0xFF, 0xFF, 0xFF}, 0},	//clHeader
+	{{0xFF, 0xFF, 0xFF}, 0},	//clFooter
+	{{247, 221, 114}, 0}		//clSelection (same gold as clBkgMenu)
 }; 
 
 const int LIGHTGUN_SIZES[LIGHTGUN_SIZES_COUNT] = {100, 80, 60, 40};

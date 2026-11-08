@@ -60,6 +60,10 @@ class Fonts{
 
 		static void destroy();
 		static void initFonts(int fontSize);
+		/* ttfPath empty keeps the embedded Arimo face. smallDelta is subtracted
+		 * from fontSize for FONTSMALL (historical value is 9). Safe to call again
+		 * to swap faces without TTF_Quit. */
+		static void initFonts(int fontSize, const std::string& ttfPath, int smallDelta);
 		static TTF_Font *getFont(int fontId);
 		static std::size_t idxToCutTTF(std::string text, int maxW, int fontId);
 		static int getSize(int, std::string);
@@ -95,7 +99,10 @@ class Fonts{
 		static Fileio fileio;
 		static TTF_Font* vFonts[MAX_FONTS];
 		static int s_fontSize;   // tamanyo usado en initFonts; para reabrir
+		static int s_smallDelta;
+		static std::string s_fontPath;
 		static SDL_mutex *mutex;
+		static void closeFaces();
 };
 
 #endif

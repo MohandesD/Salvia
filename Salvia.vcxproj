@@ -7244,6 +7244,8 @@
     <ClCompile Include="src\cheats\cheatmanager.cpp" />
     <ClCompile Include="src\cheats\rdbreader.cpp" />
     <ClCompile Include="src\const\constant.cpp" />
+    <ClCompile Include="src\theme\theme.cpp" />
+    <ClCompile Include="src\theme\themeruntime.cpp" />
     <ClCompile Include="src\engine.cpp" />
     <ClCompile Include="src\font\fonts.cpp" />
     <ClCompile Include="src\http\gamefaqs.cpp" />
@@ -7324,6 +7326,8 @@
     <ClInclude Include="src\compat\dirent.h" />
     <ClInclude Include="src\const\cfgconst.h" />
     <ClInclude Include="src\const\constant.h" />
+    <ClInclude Include="src\theme\theme.h" />
+    <ClInclude Include="src\theme\themeruntime.h" />
     <ClInclude Include="src\const\menuconst.h" />
     <ClInclude Include="src\dischelper.h" />
     <ClInclude Include="src\engine.h" />

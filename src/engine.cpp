@@ -1,4 +1,5 @@
 #include <engine.h>
+#include <theme/themeruntime.h>
 #include <io/joystick.h>
 #include <io/keyboard.h>
 #include <http/badgedownloader.h>
@@ -167,6 +168,7 @@ int Engine::initEngine(CfgLoader* cfgLoader){
 	//Actualizar overscan en windows y xbox
 	SDL_XBOX_SetOverscan(cfgLoader->configMain[cfg::overscan_x].valueInt, cfgLoader->configMain[cfg::overscan_y].valueInt);
 	SDL_WM_SetCaption("Salvia", NULL);
+	Theme_applyColors();
 	initFont();
 	joystick = new Joystick();
 	keyb = new t_keyboard();
@@ -214,13 +216,15 @@ void Engine::stopEngine(){
 int Engine::initFont(){
 	fonts = new Fonts();
 	//Establecemos 720 como la resolucion estandar, y en base a ella, escalamos la fuente
-	//dependiendo de la resolucion de la pantalla
-	fonts->initFonts((int)(BASE_FONT_HEIGHT * video_height / (float)720));
+	//dependiendo de la resolucion de la pantalla. Un theme puede sustituir el tamanyo
+	//y el fichero .ttf; si el fichero no abre se queda Arimo embebida.
+	fonts->initFonts(Theme_fontSizeForHeight(video_height), Theme_resolvedFontPath(), Theme_fontSmallDelta());
 	return 0;
 }
 
 
 void Engine::initColors(SDL_Surface *srf){
+	Theme_applyColors();
 	for (int i=0; i < clTotalColors; i++){
 		Constant::colors[i].color = SDL_MapRGBA(srf->format, Constant::colors[i].sdlColor.r, Constant::colors[i].sdlColor.g, Constant::colors[i].sdlColor.b, 0xFF);
 		Constant::colors[i].colorRaw = (Constant::colors[i].sdlColor.r << 24) | (Constant::colors[i].sdlColor.g << 16) | (Constant::colors[i].sdlColor.b << 8) | 0xFF; // RRGGBBAA

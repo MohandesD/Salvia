@@ -14,6 +14,7 @@
 #include "unzip/unziptool.h"
 #include "rhash/md5.h" // To generate a filename hash
 #include <video/shaderpreset.h>
+#include <theme/themeruntime.h>
 
 /* Definida en salvia.cpp devuelve los descriptores de memoria que el core
  * envio via RETRO_ENVIRONMENT_SET_MEMORY_MAPS (ej. HRAM en Game Boy). */
@@ -315,8 +316,10 @@ void GameMenu::refreshScreen(ListMenu &listMenu){
     const int sepVertX = listMenu.getW();
     const int halfWidth = overlay->w / 2;
 	bool debug = true;
-	const SDL_Color &textColor = Constant::colors[clWhite].sdlColor;
+	const SDL_Color &textColor = Constant::colors[clHeader].sdlColor;
 	const SDL_Color &menuBars = Constant::colors[clMenuBars].sdlColor;
+	const SalviaTheme& theme = Theme_current();
+	const bool splitArtwork = (listMenu.layout == LAYBOXES && theme.show_artwork);
 
 	if (getEmuStatus() == EMU_MENU_IMAGE_VIEWER){
 		const std::string path = menuImages[FS_IMAGES[selectedFsImage]].getFilepath();
@@ -328,18 +331,19 @@ void GameMenu::refreshScreen(ListMenu &listMenu){
 		//Drawing the rest of list and images
         auto game = listMenu.filteredGames.at(listMenu.curPos);
 		if (!game->longFileName.empty()){
-            if (listMenu.layout == LAYBOXES) {
-				//Draw the title. It can be an image or a text
-				drawTitle(listMenu, fontBig);
-				//Draw a status bar with the time, connection status and mouse availability 
-				drawStatusBar(listMenu);
+            if (splitArtwork) {
+				if (theme.show_header) {
+					drawTitle(listMenu, fontBig);
+				}
+				if (theme.show_clock) {
+					drawStatusBar(listMenu);
+				}
 				//Draw the scrapping process text
 				showScrapProcess(listMenu);
-				//Horizontal separation line
-				fastline(this->overlay, listMenu.marginX, listMenu.marginY - 1 , overlay->w - listMenu.marginX, listMenu.marginY - 1, menuBars);
-				//Vertical separation line
-                fastline(this->overlay, sepVertX, listMenu.marginY , sepVertX, listMenu.getH() + listMenu.marginY - 1, menuBars);
-				//Drawing all the menu entries
+				if (theme.show_separator) {
+					fastline(this->overlay, listMenu.marginX, listMenu.marginY - 1 , overlay->w - listMenu.marginX, listMenu.marginY - 1, menuBars);
+					fastline(this->overlay, sepVertX, listMenu.marginY , sepVertX, listMenu.getH() + listMenu.marginY - 1, menuBars);
+				}
                 listMenu.draw(this->overlay, getEmuStatus() != EMU_MENU_FILTER);
 
 				if (getEmuStatus() == EMU_MENU_FILTER){
@@ -348,12 +352,7 @@ void GameMenu::refreshScreen(ListMenu &listMenu){
 					drawSelectedGameAssets(listMenu, game);
 				}
 
-				if (listMenu.showBottomInfo){
-					const int posYBottom = listMenu.getY() + listMenu.getH();
-					fastline(this->overlay, 0, posYBottom , overlay->w - 1, posYBottom, menuBars);
-					SDL_Rect rect = {0, posYBottom + 1, overlay->w, overlay->h - posYBottom};
-					drawInfoButtons(rect);
-				}
+				drawListFooter(listMenu);
 
             } else if (listMenu.layout == LAYSIMPLE) {
                 if (listMenu.updateAssets){
@@ -370,14 +369,19 @@ void GameMenu::refreshScreen(ListMenu &listMenu){
                 fastline(this->overlay, listMenu.marginX, listMenu.marginY - 1, listMenu.getW(), listMenu.marginY - 1, textColor);
                 listMenu.draw(this->overlay);
 
-            } else if (listMenu.layout == LAYTEXT) {
-
-				Fonts::drawTextCent(overlay, fontBig, emu.name.c_str(), 
-					halfWidth, face_h_big < listMenu.marginY ? (listMenu.marginY - face_h_big) / 2 : 0 , 
-					true, false, textColor, 0);
-
-                fastline(this->overlay, listMenu.marginX, listMenu.marginY - 1, listMenu.getW(), listMenu.marginY - 1, textColor);
+            } else if (listMenu.layout == LAYTEXT || listMenu.layout == LAYGRID || listMenu.layout == LAYCAROUSEL || listMenu.layout == LAYBOXES) {
+				if (theme.show_header) {
+					drawTitle(listMenu, fontBig);
+				}
+				if (theme.show_clock) {
+					drawStatusBar(listMenu);
+				}
+				showScrapProcess(listMenu);
+				if (theme.show_separator) {
+					fastline(this->overlay, listMenu.marginX, listMenu.marginY - 1, overlay->w - listMenu.marginX, listMenu.marginY - 1, menuBars);
+				}
                 listMenu.draw(this->overlay);
+				drawListFooter(listMenu);
             }
         }
 	} else if (listMenu.getNumGames() == 0 && emu.generalConfig){
@@ -493,7 +497,7 @@ void GameMenu::drawStatusBar(ListMenu &listMenu){
 		if (strncmp(stringLastHora, stringHora, 5) != 0){
 			strncpy_s(stringLastHora, sizeof(stringLastHora), stringHora, _TRUNCATE);
 			if (srfHora != NULL) SDL_FreeSurface(srfHora);
-			srfHora = Fonts::renderUtf8Solid(fontsmall, stringHora, Constant::colors[clWhite].sdlColor);
+			srfHora = Fonts::renderUtf8Solid(fontsmall, stringHora, Constant::colors[clHeader].sdlColor);
 		}
 	}
 	
@@ -525,12 +529,56 @@ void GameMenu::drawStatusBar(ListMenu &listMenu){
 	}
 }
 
+void GameMenu::drawListFooter(ListMenu &listMenu){
+	const SalviaTheme& theme = Theme_current();
+	if (!listMenu.showBottomInfo) {
+		return;
+	}
+	if (!theme.show_footer && theme.footer_text.empty()) {
+		return;
+	}
+	const int posYBottom = listMenu.getY() + listMenu.getH();
+	if (theme.show_separator) {
+		fastline(this->overlay, 0, posYBottom, overlay->w - 1, posYBottom, Constant::colors[clMenuBars].sdlColor);
+	}
+	if (!theme.footer_text.empty()) {
+		const int textY = posYBottom + (face_h_big > 0 ? (face_h_big / 4) : 0);
+		Fonts::drawTextTransparent(overlay, Fonts::getFont(Fonts::FONTSMALL), theme.footer_text.c_str(),
+			listMenu.marginX, textY, Constant::colors[clFooter].sdlColor, 0);
+	}
+	if (theme.show_footer) {
+		SDL_Rect rect = {0, posYBottom + 1, overlay->w, overlay->h - posYBottom};
+		drawInfoButtons(rect);
+	}
+}
+
+void GameMenu::syncFontMetrics(){
+	face_h_big = Fonts::getLineSkip(Fonts::FONTBIG);
+	face_h_small = Fonts::getLineSkip(Fonts::FONTSMALL);
+	if (face_h_big < 1) {
+		face_h_big = 1;
+	}
+	if (face_h_small < 1) {
+		face_h_small = 1;
+	}
+	if (configMenus != NULL) {
+		configMenus->syncFontMetrics();
+	}
+	if (infoBtnSrf != NULL) {
+		SDL_FreeSurface(infoBtnSrf);
+		infoBtnSrf = NULL;
+	}
+}
+
 void GameMenu::drawTitle(ListMenu &listMenu, TTF_Font *fontBig){
-	const SDL_Color &textColor = Constant::colors[clWhite].sdlColor;
+	const SDL_Color &textColor = Constant::colors[clHeader].sdlColor;
+	const SalviaTheme& theme = Theme_current();
 	const ConfigEmu emu = *cfgLoader->getCfgEmu();
 
 	std::string title;
-	if (!title_image.hasImage()){
+	const bool allowImage = (theme.system_title != TH_TITLE_TEXT);
+	const bool imageReady = allowImage && title_image.hasImage();
+	if (!imageReady){
 		title = emu.name;
 	} 
 
@@ -542,17 +590,38 @@ void GameMenu::drawTitle(ListMenu &listMenu, TTF_Font *fontBig){
 		}
 	}
 
+	if (!theme.header_text.empty()) {
+		Fonts::drawTextTransparent(overlay, Fonts::getFont(Fonts::FONTSMALL), theme.header_text.c_str(),
+			listMenu.marginX, face_h_small < listMenu.marginY ? (listMenu.marginY - face_h_small) / 2 : 0,
+			textColor, 0);
+	}
+
+	const int titleY = face_h_big < listMenu.marginY ? (listMenu.marginY - face_h_big) / 2 : 0;
+	const bool wantText = (theme.system_title != TH_TITLE_IMAGE) || !imageReady;
+	if (!wantText) {
+		title.clear();
+	}
+
 	//Drawing the title
-	if (title_image.hasImage()){
+	if (imageReady){
 		title_image.printImage(this->overlay);
 		if (!title.empty()){
 			Fonts::drawTextTransparent(overlay, fontBig, title.c_str(), title_image.newOffset.w + title_image.newDim.w + 10, 
-				face_h_big < listMenu.marginY ? (listMenu.marginY - face_h_big) / 2 : 0 , 
-				textColor, 0);
+				titleY, textColor, 0);
 		}
-	} else {
-		Fonts::drawTextCentTransparent(overlay, fontBig, title.c_str(), 0, face_h_big < listMenu.marginY ? (listMenu.marginY - face_h_big) / 2 : 0 , 
-		true, false, textColor, 0);
+	} else if (!title.empty()) {
+		if (theme.align == TH_ALIGN_LEFT) {
+			Fonts::drawTextTransparent(overlay, fontBig, title.c_str(), listMenu.marginX, titleY, textColor, 0);
+		} else if (theme.align == TH_ALIGN_RIGHT) {
+			int textW = Fonts::getSize(fontBig, title);
+			int x = overlay->w - listMenu.marginX - textW;
+			if (x < 0) {
+				x = 0;
+			}
+			Fonts::drawTextTransparent(overlay, fontBig, title.c_str(), x, titleY, textColor, 0);
+		} else {
+			Fonts::drawTextCentTransparent(overlay, fontBig, title.c_str(), 0, titleY, true, false, textColor, 0);
+		}
 	}
 }
 
@@ -580,7 +649,7 @@ void GameMenu::drawInfoButtons(SDL_Rect &rect){
 	SDL_Surface *txtSrf = SDL_CreateRGBSurface(SDL_SWSURFACE, rect.w, rect.h, overlay->format->BitsPerPixel, 
 			overlay->format->Rmask, overlay->format->Gmask, overlay->format->Bmask, overlay->format->Amask);
 	
-	const int buttonsColor = clWhite;
+	const int buttonsColor = clFooter;
 	const int buttonsTransparentColor = clBlack;
 
 	//Setting the transparency effect
@@ -2828,15 +2897,40 @@ void GameMenu::drawKeyboard(TTF_Font* font, t_keyboard& keyb){
 
 bool GameMenu::loadBgImage(){
 	const dirutil dir;
-	const ANIM_BACKGROUNDS bgType = static_cast<ANIM_BACKGROUNDS>(this->cfgLoader->configMain[cfg::animBG].valueInt);
+	const SalviaTheme& theme = Theme_current();
+	const ANIM_BACKGROUNDS bgType = static_cast<ANIM_BACKGROUNDS>(Theme_effectiveBackground(this->cfgLoader->configMain[cfg::animBG].valueInt));
 	const std::string image = dir.getPathPrefix(getAssetsDir(cfgLoader->getCfgEmu()) + Constant::getFileSep() + BG_FILENAME) + ".jpg";
+	const bool systemImage = dir.fileExists(image.c_str()) ? true : false;
 
-	bool found = dir.fileExists(image.c_str());
-	if (bgType == BG_IMAGE && found){
-		return this->bg_image.loadImage(image.c_str(), this->overlay->format);
-	} else {
-		this->bg_image.closeImage();
+	int dim = theme.background_dim;
+	if (dim < 0 || dim > 255) {
+		dim = 150;
 	}
+	this->bg_image.darkShift = dim;
+
+	if (bgType == BG_IMAGE && theme.background_per_system && systemImage){
+		return this->bg_image.loadImage(image.c_str(), this->overlay->format);
+	}
+	if (bgType == BG_IMAGE && !theme.background_image.empty()) {
+		std::string themed = theme.background_image;
+		if (!dir.fileExists(themed.c_str())) {
+			std::string dirName = theme.directory;
+			if (!dirName.empty()) {
+				char last = dirName[dirName.size() - 1];
+				if (last != '\\' && last != '/') {
+					dirName += Constant::getFileSep();
+				}
+				themed = dirName + theme.background_image;
+			}
+		}
+		if (dir.fileExists(themed.c_str())) {
+			return this->bg_image.loadImage(themed.c_str(), this->overlay->format);
+		}
+	}
+	if (bgType == BG_IMAGE && systemImage){
+		return this->bg_image.loadImage(image.c_str(), this->overlay->format);
+	}
+	this->bg_image.closeImage();
 	return false;
 }
 
